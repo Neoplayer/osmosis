@@ -357,6 +357,8 @@ func (s *KeeperTestSuite) setupRangesAndAssertInvariants(pool types.Concentrated
 		s.Require().NoError(err)
 	}
 
+	expectedTotalPositions := totalPositions
+
 	// --- Position setup ---
 
 	// This loop runs through each given tick range and does the following at each iteration:
@@ -367,6 +369,9 @@ func (s *KeeperTestSuite) setupRangesAndAssertInvariants(pool types.Concentrated
 	for curRange := range ranges {
 		curBlock := 0
 		startNumPositions := len(allPositionIds)
+
+		expectedNumPositions := numPositionSlice[curRange]
+
 		for curNumPositions := lastVisitedBlockIndex; curNumPositions < lastVisitedBlockIndex+numPositionSlice[curRange]; curNumPositions++ {
 			// By default we create a new address for each position, but if the test params specify using a single address
 			// for each range, we handle that logic here.
@@ -414,8 +419,23 @@ func (s *KeeperTestSuite) setupRangesAndAssertInvariants(pool types.Concentrated
 
 			// Execute swap against pool if applicable
 			fmt.Println("-------------------- Begin new Swap --------------------")
-			swappedIn, swappedOut := s.executeRandomizedSwap(pool, swapAddresses, testParams.baseSwapAmount, testParams.fuzzSwapAmounts)
-			s.assertGlobalInvariants(ExpectedGlobalRewardValues{})
+			swappedIn, swappedOut, err := s.executeRandomizedSwap(pool, swapAddresses, testParams.baseSwapAmount, testParams.fuzzSwapAmounts)
+			if errors.As(err, &types.InvalidAmountCalculatedError{}) {
+				// If the swap we're about to execute will not generate enough output, we skip the swap.
+				// it would error for a real user though. This is good though, since that user would just be burning funds.
+				if err.(types.InvalidAmountCalculatedError).Amount.IsZero() {
+					fmt.Println("Hit error for 0 out, swap failed")
+					fmt.Println("TODO: Revert swap attempt")
+					// expectedNumPositions--
+					// expectedTotalPositions--
+					// continue
+				} else {
+					s.Require().NoError(err)
+				}
+			} else {
+				s.Require().NoError(err)
+				s.assertGlobalInvariants(ExpectedGlobalRewardValues{})
+			}
 
 			// Track changes to state
 			actualAddedCoins := sdk.NewCoins(sdk.NewCoin(pool.GetToken0(), actualAmt0), sdk.NewCoin(pool.GetToken1(), actualAmt1))
@@ -431,19 +451,19 @@ func (s *KeeperTestSuite) setupRangesAndAssertInvariants(pool types.Concentrated
 		endNumPositions := len(allPositionIds)
 
 		// Ensure the correct number of positions were set up in current range
-		s.Require().Equal(numPositionSlice[curRange], endNumPositions-startNumPositions, "Incorrect number of positions set up in range %d", curRange)
+		s.Require().Equal(expectedNumPositions, endNumPositions-startNumPositions, "Incorrect number of positions set up in range %d", curRange)
 
 		lastVisitedBlockIndex += curBlock
 	}
 
 	// Ensure that the correct number of positions were set up globally
-	s.Require().Equal(totalPositions, len(allPositionIds))
+	s.Require().Equal(expectedTotalPositions, len(allPositionIds))
 
 	// Ensure the pool balance is exactly equal to the assets added + amount swapped in - amount swapped out
 	poolAssets := s.App.BankKeeper.GetAllBalances(s.Ctx, pool.GetAddress())
 	poolSpreadRewards := s.App.BankKeeper.GetAllBalances(s.Ctx, pool.GetSpreadRewardsAddress())
 	// We rebuild coins to handle nil cases cleanly
-	s.Require().Equal(sdk.NewCoins(totalAssets...), sdk.NewCoins(poolAssets.Add(poolSpreadRewards...)...))
+	s.Require().Equal(sdk.NewCoins(totalAssets...).String(), sdk.NewCoins(poolAssets.Add(poolSpreadRewards...)...).String())
 
 	// Do a final checkpoint for incentives and then run assertions on expected global claimable value
 	cumulativeEmittedIncentives, lastIncentiveTrackerUpdate = s.trackEmittedIncentives(cumulativeEmittedIncentives, lastIncentiveTrackerUpdate)
@@ -488,10 +508,10 @@ func (s *KeeperTestSuite) prepareNumPositionSlice(ranges [][]int64, baseNumPosit
 // The direction of the swap is chosen randomly, but the swap function used is always SwapInGivenOut to
 // ensure it is always possible to swap against the pool without having to use lower level calc functions.
 // TODO: Make swaps that target getting to a tick boundary exactly
-func (s *KeeperTestSuite) executeRandomizedSwap(pool types.ConcentratedPoolExtension, swapAddresses []sdk.AccAddress, baseSwapAmount sdk.Int, fuzzSwap bool) (sdk.Coin, sdk.Coin) {
+func (s *KeeperTestSuite) executeRandomizedSwap(pool types.ConcentratedPoolExtension, swapAddresses []sdk.AccAddress, baseSwapAmount sdk.Int, fuzzSwap bool) (sdk.Coin, sdk.Coin, error) {
 	// Quietly skip if no swap assets or swap addresses provided
 	if (baseSwapAmount == sdk.Int{}) || len(swapAddresses) == 0 {
-		return sdk.Coin{}, sdk.Coin{}
+		return sdk.Coin{}, sdk.Coin{}, nil
 	}
 
 	poolLiquidity := s.App.BankKeeper.GetAllBalances(s.Ctx, pool.GetAddress())
@@ -519,11 +539,11 @@ func (s *KeeperTestSuite) executeRandomizedSwap(pool types.ConcentratedPoolExten
 
 	updatedPool, err := s.clk.GetPoolById(s.Ctx, pool.GetId())
 	// TODO: allow target tick to be specified and fuzzed
-	swappedIn, swappedOut := s.executeSwapToTickBoundary(updatedPool, swapAddress, updatedPool.GetCurrentTick()+1, false)
+	swappedIn, swappedOut, err := s.executeSwapToTickBoundary(updatedPool, swapAddress, updatedPool.GetCurrentTick()+1, false)
 
 	// Note: the early return here was simply to rush repro the panic. This logic will ultimately live in separate branches depending on whether
 	// testParams.swapToTickBoundary is enabled or not.
-	return swappedIn, swappedOut
+	return swappedIn, swappedOut, err
 
 	// TODO: pick a more granular amount to fund without losing ability to swap at really high/low ticks
 	swapInFunded := sdk.NewCoin(swapInDenom, sdk.Int(sdk.MustNewDecFromStr("10000000000000000000000000000000000000000")))
@@ -546,7 +566,8 @@ func (s *KeeperTestSuite) executeRandomizedSwap(pool types.ConcentratedPoolExten
 		minSwapOutAmount := poolSpotPrice.Mul(osmomath.SmallestDec()).SDKDec().TruncateInt()
 		poolBalances := s.App.BankKeeper.GetAllBalances(s.Ctx, pool.GetAddress())
 		if poolBalances.AmountOf(swapOutDenom).LTE(minSwapOutAmount) {
-			return sdk.Coin{}, sdk.Coin{}
+			// TODO: should error here?
+			return sdk.Coin{}, sdk.Coin{}, nil
 		}
 	}
 
@@ -554,11 +575,11 @@ func (s *KeeperTestSuite) executeRandomizedSwap(pool types.ConcentratedPoolExten
 	swappedIn, swappedOut, _, err = s.clk.SwapInAmtGivenOut(s.Ctx, swapAddress, pool, swapOutCoin, swapInDenom, pool.GetSpreadFactor(s.Ctx), sdk.ZeroDec())
 	s.Require().NoError(err)
 
-	return swappedIn, swappedOut
+	return swappedIn, swappedOut, nil
 }
 
 // executeSwapToTickBoundary executes a swap against the pool to get to the specified tick boundary, randomizing the chosen tick if applicable.
-func (s *KeeperTestSuite) executeSwapToTickBoundary(pool types.ConcentratedPoolExtension, swapAddress sdk.AccAddress, targetTick int64, fuzzTick bool) (sdk.Coin, sdk.Coin) {
+func (s *KeeperTestSuite) executeSwapToTickBoundary(pool types.ConcentratedPoolExtension, swapAddress sdk.AccAddress, targetTick int64, fuzzTick bool) (sdk.Coin, sdk.Coin, error) {
 	// zeroForOne := swapInDenom == pool.GetToken0()
 
 	pool, err := s.clk.GetPoolById(s.Ctx, pool.GetId())
@@ -582,7 +603,8 @@ func (s *KeeperTestSuite) executeSwapToTickBoundary(pool types.ConcentratedPoolE
 	poolBalances := s.App.BankKeeper.GetAllBalances(s.Ctx, pool.GetAddress())
 	if poolBalances.AmountOf(swapOutDenom).LTE(minSwapOutAmount) {
 		fmt.Println("skipped")
-		return sdk.Coin{}, sdk.Coin{}
+		// figure out if error wanted here
+		return sdk.Coin{}, sdk.Coin{}, nil
 	}
 
 	fmt.Println("dec amt in required to get to tick boundary: ", amountInRequired)
@@ -591,14 +613,15 @@ func (s *KeeperTestSuite) executeSwapToTickBoundary(pool types.ConcentratedPoolE
 
 	// Execute swap
 	fmt.Println("begin keeper swap")
-	swappedIn, swappedOut, _, err := s.clk.SwapOutAmtGivenIn(s.Ctx, swapAddress, pool, swapInFunded, swapOutDenom, pool.GetSpreadFactor(s.Ctx), sdk.ZeroDec())
+	cacheCtx, write := s.Ctx.CacheContext()
+	swappedIn, swappedOut, _, err := s.clk.SwapOutAmtGivenIn(cacheCtx, swapAddress, pool, swapInFunded, swapOutDenom, pool.GetSpreadFactor(s.Ctx), sdk.ZeroDec())
 	if errors.As(err, &types.InvalidAmountCalculatedError{}) {
 		// If the swap we're about to execute will not generate enough output, we skip the swap.
 		// it would error for a real user though. This is good though, since that user would just be burning funds.
 		if err.(types.InvalidAmountCalculatedError).Amount.IsZero() {
 			fmt.Println("Hit error for 0 out, swap failed")
 			fmt.Println("TODO: Revert swap attempt")
-			return sdk.Coin{}, sdk.Coin{}
+			return sdk.Coin{}, sdk.Coin{}, err
 		} else {
 			s.Require().NoError(err)
 		}
@@ -606,7 +629,9 @@ func (s *KeeperTestSuite) executeSwapToTickBoundary(pool types.ConcentratedPoolE
 		s.Require().NoError(err)
 	}
 
-	return swappedIn, swappedOut
+	write()
+
+	return swappedIn, swappedOut, err
 }
 
 func randOrder[T any](a, b T) (T, T) {
