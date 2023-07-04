@@ -230,6 +230,7 @@ type RangeTestParams struct {
 	fuzzSwapAmounts      bool
 	fuzzTimeBetweenJoins bool
 	fuzzIncentiveRecords bool
+	fuzzAroundTicks      bool
 
 	// -- Optional additional test dimensions --
 
@@ -419,16 +420,13 @@ func (s *KeeperTestSuite) setupRangesAndAssertInvariants(pool types.Concentrated
 
 			// Execute swap against pool if applicable
 			fmt.Println("-------------------- Begin new Swap --------------------")
-			swappedIn, swappedOut, err := s.executeRandomizedSwap(pool, swapAddresses, testParams.baseSwapAmount, testParams.fuzzSwapAmounts)
+			swappedIn, swappedOut, err := s.executeRandomizedSwap(pool, swapAddresses, testParams.baseSwapAmount, testParams.fuzzSwapAmounts, testParams.fuzzAroundTicks)
 			if errors.As(err, &types.InvalidAmountCalculatedError{}) {
 				// If the swap we're about to execute will not generate enough output, we skip the swap.
 				// it would error for a real user though. This is good though, since that user would just be burning funds.
 				if err.(types.InvalidAmountCalculatedError).Amount.IsZero() {
 					fmt.Println("Hit error for 0 out, swap failed")
 					fmt.Println("TODO: Revert swap attempt")
-					// expectedNumPositions--
-					// expectedTotalPositions--
-					// continue
 				} else {
 					s.Require().NoError(err)
 				}
@@ -508,7 +506,7 @@ func (s *KeeperTestSuite) prepareNumPositionSlice(ranges [][]int64, baseNumPosit
 // The direction of the swap is chosen randomly, but the swap function used is always SwapInGivenOut to
 // ensure it is always possible to swap against the pool without having to use lower level calc functions.
 // TODO: Make swaps that target getting to a tick boundary exactly
-func (s *KeeperTestSuite) executeRandomizedSwap(pool types.ConcentratedPoolExtension, swapAddresses []sdk.AccAddress, baseSwapAmount sdk.Int, fuzzSwap bool) (sdk.Coin, sdk.Coin, error) {
+func (s *KeeperTestSuite) executeRandomizedSwap(pool types.ConcentratedPoolExtension, swapAddresses []sdk.AccAddress, baseSwapAmount sdk.Int, fuzzSwap bool, fuzzTick bool) (sdk.Coin, sdk.Coin, error) {
 	// Quietly skip if no swap assets or swap addresses provided
 	if (baseSwapAmount == sdk.Int{}) || len(swapAddresses) == 0 {
 		return sdk.Coin{}, sdk.Coin{}, nil
@@ -539,7 +537,7 @@ func (s *KeeperTestSuite) executeRandomizedSwap(pool types.ConcentratedPoolExten
 
 	updatedPool, err := s.clk.GetPoolById(s.Ctx, pool.GetId())
 	// TODO: allow target tick to be specified and fuzzed
-	swappedIn, swappedOut, err := s.executeSwapToTickBoundary(updatedPool, swapAddress, updatedPool.GetCurrentTick()+1, false)
+	swappedIn, swappedOut, err := s.executeSwapToTickBoundary(updatedPool, swapAddress, updatedPool.GetCurrentTick()+1, fuzzTick)
 
 	// Note: the early return here was simply to rush repro the panic. This logic will ultimately live in separate branches depending on whether
 	// testParams.swapToTickBoundary is enabled or not.
@@ -588,6 +586,23 @@ func (s *KeeperTestSuite) executeSwapToTickBoundary(pool types.ConcentratedPoolE
 	currentTick := pool.GetCurrentTick()
 	zeroForOne := currentTick >= targetTick
 	amountInRequired, _, _ := s.computeSwapAmounts(pool.GetId(), pool.GetCurrentSqrtPrice(), targetTick, zeroForOne, false)
+
+	if fuzzTick {
+		shouldSwapMoreToCross := rand.Intn(2) == 0
+
+		// between 1 to 5 more
+		multiplier := 1 + rand.Int63n(5)
+
+		// this causes tick to be crossed
+		if shouldSwapMoreToCross {
+			multiplier = 100 + multiplier
+		} else {
+			// this avoids crossing the tick.
+			multiplier = 100 - multiplier
+		}
+
+		amountInRequired = amountInRequired.MulInt64(100 + multiplier)
+	}
 
 	var swapInDenom, swapOutDenom string
 	if zeroForOne {
