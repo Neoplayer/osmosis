@@ -2075,7 +2075,7 @@ func (s *KeeperTestSuite) TestComputeAndSwapOutAmtGivenIn() {
 			cacheCtx, _ := s.Ctx.CacheContext()
 			tokenIn, tokenOut, poolUpdates, totalSpreadRewards, err := s.App.ConcentratedLiquidityKeeper.ComputeOutAmtGivenIn(
 				cacheCtx,
-				pool.GetId(),
+				pool,
 				test.tokenIn, test.tokenOutDenom,
 				test.spreadFactor, test.priceLimit)
 
@@ -2220,9 +2220,9 @@ func (s *KeeperTestSuite) TestComputeAndSwapInAmtGivenOut() {
 			// perform compute
 			cacheCtx, _ := s.Ctx.CacheContext()
 			tokenIn, tokenOut, poolUpdates, totalSpreadRewards, err := s.App.ConcentratedLiquidityKeeper.ComputeInAmtGivenOut(
-				cacheCtx,
+				cacheCtx, pool,
 				test.tokenOut, test.tokenInDenom,
-				test.spreadFactor, test.priceLimit, pool.GetId())
+				test.spreadFactor, test.priceLimit)
 			if test.expectErr {
 				s.Require().Error(err)
 			} else {
@@ -2720,7 +2720,7 @@ func (s *KeeperTestSuite) TestComputeOutAmtGivenIn() {
 			// perform calc
 			_, _, _, _, err := s.App.ConcentratedLiquidityKeeper.ComputeOutAmtGivenIn(
 				s.Ctx,
-				poolBeforeCalc.GetId(),
+				poolBeforeCalc,
 				test.tokenIn, test.tokenOutDenom,
 				test.spreadFactor, test.priceLimit)
 			s.Require().NoError(err)
@@ -2806,8 +2806,9 @@ func (s *KeeperTestSuite) TestComputeInAmtGivenOut() {
 			// perform calc
 			_, _, _, _, err := s.App.ConcentratedLiquidityKeeper.ComputeInAmtGivenOut(
 				s.Ctx,
+				poolBeforeCalc,
 				test.tokenOut, test.tokenInDenom,
-				test.spreadFactor, test.priceLimit, poolBeforeCalc.GetId())
+				test.spreadFactor, test.priceLimit)
 			s.Require().NoError(err)
 
 			// check that the pool has not been modified after performing calc
