@@ -2157,6 +2157,9 @@ func (s *KeeperTestSuite) TestSwapOutAmtGivenIn_TickUpdates() {
 			s.Require().NoError(err)
 			spreadFactorAccum.AddToAccumulator(DefaultSpreadRewardAccumCoins.MulDec(sdk.NewDec(2)))
 
+			pool, err = s.clk.GetPoolById(s.Ctx, pool.GetId())
+			s.Require().NoError(err)
+
 			// perform swap
 			_, _, _, err = s.App.ConcentratedLiquidityKeeper.SwapOutAmtGivenIn(
 				s.Ctx, s.TestAccs[0], pool,
@@ -2296,6 +2299,9 @@ func (s *KeeperTestSuite) TestSwapInAmtGivenOut_TickUpdates() {
 			spreadFactorAccum, err = s.App.ConcentratedLiquidityKeeper.GetSpreadRewardAccumulator(s.Ctx, 1)
 			s.Require().NoError(err)
 			spreadFactorAccum.AddToAccumulator(DefaultSpreadRewardAccumCoins.MulDec(sdk.NewDec(2)))
+
+			pool, err = s.clk.GetPoolById(s.Ctx, pool.GetId())
+			s.Require().NoError(err)
 
 			// perform swap
 			_, _, _, err = s.App.ConcentratedLiquidityKeeper.SwapInAmtGivenOut(
@@ -3414,6 +3420,9 @@ func (s *KeeperTestSuite) TestInfiniteSwapLoop_OutGivenIn() {
 	swapEthFunded := sdk.NewCoin(ETH, sdk.Int(sdk.MustNewDecFromStr("10000000000000000000000000000000000000000")))
 	swapUSDCFunded := sdk.NewCoin(USDC, sdk.Int(sdk.MustNewDecFromStr("10000")))
 	s.FundAcc(swapAddress, sdk.NewCoins(swapEthFunded, swapUSDCFunded))
+	pool, err = s.clk.GetPoolById(s.Ctx, pool.GetId())
+	s.Require().NoError(err)
+
 	_, tokenOut, _, err := s.clk.SwapInAmtGivenOut(s.Ctx, swapAddress, pool, sdk.NewCoin(USDC, sdk.NewInt(10000)), ETH, pool.GetSpreadFactor(s.Ctx), sdk.ZeroDec())
 	s.Require().NoError(err)
 
