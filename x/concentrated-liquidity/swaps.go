@@ -795,16 +795,15 @@ func (k Keeper) setupSwapStrategy(p types.ConcentratedPoolExtension, spreadFacto
 	return swapStrategy, sqrtPriceLimit, nil
 }
 
-func (k Keeper) getPoolForSwap(ctx sdk.Context, p types.ConcentratedPoolExtension) (types.ConcentratedPoolExtension, error) {
-
-	hasPositionInPool, err := k.HasAnyPositionForPool(ctx, p.GetId())
+func (k Keeper) getPoolForSwap(ctx sdk.Context, pool types.ConcentratedPoolExtension) (types.ConcentratedPoolExtension, error) {
+	hasPositionInPool, err := k.HasAnyPositionForPool(ctx, pool.GetId())
 	if err != nil {
-		return p, err
+		return pool, err
 	}
 	if !hasPositionInPool {
-		return p, types.NoSpotPriceWhenNoLiquidityError{PoolId: p.GetId()}
+		return pool, types.NoSpotPriceWhenNoLiquidityError{PoolId: pool.GetId()}
 	}
-	return p, nil
+	return pool, nil
 }
 
 func (k Keeper) getSwapAccumulators(ctx sdk.Context, poolId uint64) (accum.AccumulatorObject, []accum.AccumulatorObject, error) {
