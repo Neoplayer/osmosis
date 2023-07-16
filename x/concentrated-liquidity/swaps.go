@@ -10,8 +10,6 @@ import (
 	"github.com/osmosis-labs/osmosis/osmoutils/accum"
 	events "github.com/osmosis-labs/osmosis/v16/x/poolmanager/events"
 
-	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
-
 	"github.com/osmosis-labs/osmosis/v16/x/concentrated-liquidity/math"
 	"github.com/osmosis-labs/osmosis/v16/x/concentrated-liquidity/swapstrategy"
 	"github.com/osmosis-labs/osmosis/v16/x/concentrated-liquidity/types"
@@ -694,48 +692,45 @@ func (k Keeper) updatePoolForSwap(
 	// inputs that correspond to a series of outputs. It returns an error if the
 	// inputs and outputs don't lineup or if any single transfer of tokens fails.
 
-	inputs := []banktypes.Input{{
-		Address: swapDetails.Sender.String(),
-		Coins:   sdk.NewCoins(swapDetails.TokenIn),
-	}}
+	// inputs := []banktypes.Input{
+	// 	{
+	// 		Address: swapDetails.Sender.String(),
+	// 		Coins:   sdk.NewCoins(swapDetails.TokenIn),
+	// 	},
+	// 	{
+	// 		Address: pool.GetAddress().String(),
+	// 		Coins:   sdk.NewCoins(swapDetails.TokenOut),
+	// 	},
+	// }
 
-	outputs := []banktypes.Output{{
-		Address: pool.GetAddress().String(),
-		Coins:   sdk.NewCoins(swapDetails.TokenIn),
-	}}
+	// outputs := []banktypes.Output{
+	// 	{
+	// 		Address: pool.GetAddress().String(),
+	// 		Coins:   sdk.NewCoins(swapDetails.TokenIn),
+	// 	},
+	// 	{
+	// 		Address: swapDetails.Sender.String(),
+	// 		Coins:   sdk.NewCoins(swapDetails.TokenOut),
+	// 	},
+	// }
 
-	err := k.bankKeeper.InputOutputCoins(ctx, inputs, outputs)
+	// err := k.bankKeeper.InputOutputCoins(ctx, inputs, outputs)
+	// if err != nil {
+	// 	return types.InsufficientPoolBalanceError{Err: err}
+	// }
+
+	// Send the input token from the user to the pool's primary address
+	err := k.bankKeeper.SendCoins(ctx, swapDetails.Sender, pool.GetAddress(), sdk.Coins{
+		swapDetails.TokenIn,
+	})
 	if err != nil {
 		return types.InsufficientUserBalanceError{Err: err}
 	}
 
-	inputs = []banktypes.Input{{
-		Address: pool.GetAddress().String(),
-		Coins:   sdk.NewCoins(swapDetails.TokenOut),
-	}}
-
-	outputs = []banktypes.Output{{
-		Address: swapDetails.Sender.String(),
-		Coins:   sdk.NewCoins(swapDetails.TokenOut),
-	}}
-
-	err = k.bankKeeper.InputOutputCoins(ctx, inputs, outputs)
-	if err != nil {
-		return types.InsufficientPoolBalanceError{Err: err}
-	}
-
-	// Send the input token from the user to the pool's primary address
-	// err := k.bankKeeper.SendCoins(ctx, swapDetails.Sender, pool.GetAddress(), sdk.Coins{
-	// 	swapDetails.TokenIn,
-	// })
-	// if err != nil {
-	// 	return types.InsufficientUserBalanceError{Err: err}
-	// }
-
-	// // Send the output token to the sender from the pool
-	// err = k.bankKeeper.SendCoins(ctx, pool.GetAddress(), swapDetails.Sender, sdk.Coins{
-	// 	swapDetails.TokenOut,
-	// })
+	// Send the output token to the sender from the pool
+	err = k.bankKeeper.SendCoins(ctx, pool.GetAddress(), swapDetails.Sender, sdk.Coins{
+		swapDetails.TokenOut,
+	})
 
 	if err != nil {
 		return types.InsufficientPoolBalanceError{Err: err}
