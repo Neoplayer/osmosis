@@ -2732,10 +2732,13 @@ func (s *KeeperTestSuite) TestComputeOutAmtGivenIn() {
 			s.setupAndFundSwapTest()
 			poolBeforeCalc := s.preparePoolAndDefaultPositions(test)
 
+			pool, err := s.clk.GetPoolById(s.Ctx, poolBeforeCalc.GetId())
+			s.Require().NoError(err)
+
 			// perform calc
-			_, _, _, _, err := s.App.ConcentratedLiquidityKeeper.ComputeOutAmtGivenIn(
+			_, _, _, _, err = s.App.ConcentratedLiquidityKeeper.ComputeOutAmtGivenIn(
 				s.Ctx,
-				poolBeforeCalc,
+				pool,
 				test.tokenIn, test.tokenOutDenom,
 				test.spreadFactor, test.priceLimit)
 			s.Require().NoError(err)
@@ -2757,10 +2760,13 @@ func (s *KeeperTestSuite) TestCalcOutAmtGivenIn_NonMutative() {
 			s.setupAndFundSwapTest()
 			poolBeforeCalc := s.preparePoolAndDefaultPositions(test)
 
+			pool, err := s.clk.GetPoolById(s.Ctx, poolBeforeCalc.GetId())
+			s.Require().NoError(err)
+
 			// perform calc
-			_, err := s.App.ConcentratedLiquidityKeeper.CalcOutAmtGivenIn(
+			_, err = s.App.ConcentratedLiquidityKeeper.CalcOutAmtGivenIn(
 				s.Ctx,
-				poolBeforeCalc,
+				pool,
 				test.tokenIn, test.tokenOutDenom,
 				test.spreadFactor)
 			s.Require().NoError(err)
@@ -2791,11 +2797,13 @@ func (s *KeeperTestSuite) TestCalcInAmtGivenOut_NonMutative() {
 		s.Run(name, func() {
 			s.setupAndFundSwapTest()
 			poolBeforeCalc := s.preparePoolAndDefaultPositions(test)
+			pool, err := s.clk.GetPoolById(s.Ctx, poolBeforeCalc.GetId())
+			s.Require().NoError(err)
 
 			// perform calc
-			_, err := s.App.ConcentratedLiquidityKeeper.CalcOutAmtGivenIn(
+			_, err = s.App.ConcentratedLiquidityKeeper.CalcOutAmtGivenIn(
 				s.Ctx,
-				poolBeforeCalc,
+				pool,
 				test.tokenIn, test.tokenOutDenom,
 				test.spreadFactor)
 			s.Require().NoError(err)
@@ -2818,10 +2826,13 @@ func (s *KeeperTestSuite) TestComputeInAmtGivenOut() {
 			s.setupAndFundSwapTest()
 			poolBeforeCalc := s.preparePoolAndDefaultPositions(test)
 
+			pool, err := s.clk.GetPoolById(s.Ctx, poolBeforeCalc.GetId())
+			s.Require().NoError(err)
+
 			// perform calc
-			_, _, _, _, err := s.App.ConcentratedLiquidityKeeper.ComputeInAmtGivenOut(
+			_, _, _, _, err = s.App.ConcentratedLiquidityKeeper.ComputeInAmtGivenOut(
 				s.Ctx,
-				poolBeforeCalc,
+				pool,
 				test.tokenOut, test.tokenInDenom,
 				test.spreadFactor, test.priceLimit)
 			s.Require().NoError(err)
@@ -2843,15 +2854,18 @@ func (s *KeeperTestSuite) TestInverseRelationshipSwapOutAmtGivenIn() {
 			userBalanceBeforeSwap := s.App.BankKeeper.GetAllBalances(s.Ctx, s.TestAccs[0])
 			poolBalanceBeforeSwap := s.App.BankKeeper.GetAllBalances(s.Ctx, poolBefore.GetAddress())
 
+			pool, err := s.clk.GetPoolById(s.Ctx, poolBefore.GetId())
+			s.Require().NoError(err)
+
 			// system under test
 			firstTokenIn, firstTokenOut, _, err := s.App.ConcentratedLiquidityKeeper.SwapOutAmtGivenIn(
-				s.Ctx, s.TestAccs[0], poolBefore,
+				s.Ctx, s.TestAccs[0], pool,
 				test.tokenIn, test.tokenOutDenom,
 				DefaultZeroSpreadFactor, test.priceLimit)
 			s.Require().NoError(err)
 
 			secondTokenIn, secondTokenOut, _, err := s.App.ConcentratedLiquidityKeeper.SwapOutAmtGivenIn(
-				s.Ctx, s.TestAccs[0], poolBefore,
+				s.Ctx, s.TestAccs[0], pool,
 				firstTokenOut, firstTokenIn.Denom,
 				DefaultZeroSpreadFactor, sdk.ZeroDec(),
 			)
@@ -2920,15 +2934,18 @@ func (s *KeeperTestSuite) TestInverseRelationshipSwapInAmtGivenOut() {
 			userBalanceBeforeSwap := s.App.BankKeeper.GetAllBalances(s.Ctx, s.TestAccs[0])
 			poolBalanceBeforeSwap := s.App.BankKeeper.GetAllBalances(s.Ctx, poolBefore.GetAddress())
 
+			pool, err := s.clk.GetPoolById(s.Ctx, poolBefore.GetId())
+			s.Require().NoError(err)
+
 			// system under test
 			firstTokenIn, firstTokenOut, _, err := s.App.ConcentratedLiquidityKeeper.SwapInAmtGivenOut(
-				s.Ctx, s.TestAccs[0], poolBefore,
+				s.Ctx, s.TestAccs[0], pool,
 				test.tokenOut, test.tokenInDenom,
 				DefaultZeroSpreadFactor, test.priceLimit)
 			s.Require().NoError(err)
 
 			secondTokenIn, secondTokenOut, _, err := s.App.ConcentratedLiquidityKeeper.SwapInAmtGivenOut(
-				s.Ctx, s.TestAccs[0], poolBefore,
+				s.Ctx, s.TestAccs[0], pool,
 				firstTokenIn, firstTokenOut.Denom,
 				DefaultZeroSpreadFactor, sdk.ZeroDec(),
 			)
