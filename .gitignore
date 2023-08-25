@@ -3,6 +3,10 @@
 # Edit at https://www.toptal.com/developers/gitignore?templates=intellij,vscode,macos,windows
 
 build
+
+cmd/osmosisd/Txs
+cmd/osmosisd/osmosisd
+
 **/*/node_modules
 
 ### Go ###
@@ -249,6 +253,8 @@ blocks.db
 # Ignore binary created from localosmosis scripts
 tests/cl-genesis-positions/script
 tests/cl-genesis-positions/*.json
+
+Txs/
 
 # Docs
 docs/protocol/book
